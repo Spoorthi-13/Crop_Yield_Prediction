@@ -1,32 +1,27 @@
-import pandas as pd
-import pickle
 from sklearn.ensemble import RandomForestRegressor
+import pickle
+import pandas as pd
 
-# Load data
-df_original = pd.read_csv("data/crop_data.csv")
-df_original = df_original.dropna()
-df_original["Yield"] = df_original["Production"] / df_original["Area"]
+df = pd.read_csv("data/crop_data.csv")
+df = df.dropna()
+df["Yield"] = df["Production"] / df["Area"]
 
-# One-hot encode
-df_encoded = pd.get_dummies(
-    df_original,
-    columns=["Crop", "Season", "State_Name"]
-)
+df_encoded = pd.get_dummies(df, columns=["Crop", "Season", "State_Name"])
 
-X = df_encoded.drop(
-    ["Yield", "Production", "District_Name"],
-    axis=1,
-    errors="ignore"
-)
-
+X = df_encoded.drop(["Yield", "Production", "District_Name"], axis=1, errors="ignore")
 y = df_encoded["Yield"]
 
-# Train model
-model = RandomForestRegressor(n_estimators=100, random_state=42)
+# SMALLER MODEL
+model = RandomForestRegressor(
+    n_estimators=20,      # ↓ Reduced trees
+    max_depth=10,         # ↓ Limit depth
+    random_state=42,
+    n_jobs=-1
+)
+
 model.fit(X, y)
 
-# Save model and columns
 with open("crop_model.pkl", "wb") as f:
     pickle.dump((model, X.columns.tolist()), f)
 
-print("Model saved successfully.")
+print("Model saved successfully")
