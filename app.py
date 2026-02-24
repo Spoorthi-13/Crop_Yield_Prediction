@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import pickle
 import plotly.express as px
+from sklearn.ensemble import RandomForestRegressor
 
 # ----------------------------
 # PAGE CONFIG
@@ -17,18 +17,15 @@ st.set_page_config(
 # ----------------------------
 st.markdown("""
 <style>
-/* App background & text */
 [data-testid="stAppViewContainer"] {
     background: linear-gradient(to right, #141e30, #243b55);
     color: white;
 }
 
-/* Sidebar background */
 section[data-testid="stSidebar"] {
     background-color: #1f2b3a;
 }
 
-/* Sidebar labels, headers, text */
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
@@ -39,33 +36,28 @@ section[data-testid="stSidebar"] span {
     color: white !important;
 }
 
-/* Selectbox input text */
 .stSelectbox div[data-baseweb="select"] > div {
     background-color: #2c3e50 !important;
     color: white !important;
 }
 
-/* Make selectbox dropdown arrow visible */
 .stSelectbox div[data-baseweb="select"] svg {
     fill: white !important;
 }
 
-/* Number input text */
 .stNumberInput input {
     background-color: #2c3e50 !important;
     color: white !important;
 }
 
-/* Listbox dropdown options */
 div[role="listbox"] {
     background-color: #2c3e50 !important;
     color: white !important;
 }
 
-/* Force Predict Yield button styling */
 [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button {
-    background-color: #0b84a5 !important;   /* blue background */
-    color: #ffffff !important;              /* white text */
+    background-color: #0b84a5 !important;
+    color: #ffffff !important;
     font-weight: bold !important;
     border-radius: 6px !important;
     border: none !important;
@@ -73,21 +65,17 @@ div[role="listbox"] {
     font-size: 0.95rem !important;
 }
 
-/* Hover state */
 [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button:hover {
     background-color: #09728f !important;
     color: #ffffff !important;
 }
 
-/* Disabled state */
 [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button:disabled {
     background-color: #0b84a5 !important;
     color: #ffffff !important;
-    opacity: 0.8 !important;  /* slightly faded but readable */
-}
+    opacity: 0.8 !important;
 }
 
-/* Plotly charts background */
 .plotly-graph-div {
     background-color: #141e30 !important;
 }
@@ -95,14 +83,28 @@ div[role="listbox"] {
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# LOAD MODEL & DATA
+# LOAD DATA & TRAIN MODEL (Replaces pickle loading)
 # ----------------------------
-model = pickle.load(open("model/crop_model.pkl", "rb"))
-model_columns = pickle.load(open("model/model_columns.pkl", "rb"))
-
 df_original = pd.read_csv("data/crop_data.csv")
 df_original = df_original.dropna()
 df_original["Yield"] = df_original["Production"] / df_original["Area"]
+
+# One-hot encode categorical features
+df_encoded = pd.get_dummies(
+    df_original,
+    columns=["Crop", "Season", "State_Name"]
+)
+
+# Prepare features and target
+X = df_encoded.drop(["Yield", "Production"], axis=1)
+y = df_encoded["Yield"]
+
+# Train model
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X, y)
+
+# Save model columns
+model_columns = X.columns.tolist()
 
 # ----------------------------
 # TITLE
@@ -138,9 +140,17 @@ if predict_button:
     input_data.loc[0] = 0
 
     input_data["Area"] = area
-    input_data[f"Crop_{selected_crop}"] = 1
-    input_data[f"Season_{selected_season}"] = 1
-    input_data[f"State_Name_{selected_state}"] = 1
+
+    crop_col = f"Crop_{selected_crop}"
+    season_col = f"Season_{selected_season}"
+    state_col = f"State_Name_{selected_state}"
+
+    if crop_col in input_data.columns:
+        input_data[crop_col] = 1
+    if season_col in input_data.columns:
+        input_data[season_col] = 1
+    if state_col in input_data.columns:
+        input_data[state_col] = 1
 
     prediction = model.predict(input_data)[0]
 
@@ -150,7 +160,6 @@ if predict_button:
     st.success(f"🌾 Predicted Yield: {round(prediction, 2)}")
     st.info(f"Estimated Range: {round(lower,2)} - {round(upper,2)}")
 
-    # Crop-specific classification
     crop_df = df_original[df_original["Crop"] == selected_crop]
 
     st.subheader("📈 Yield Insight")
@@ -167,16 +176,16 @@ if predict_button:
             st.error("Low Yield Expected ⚠")
 
 # ============================
-# OVERALL HISTORICAL TREND (ALL CROPS)
+# OVERALL HISTORICAL TREND
 # ============================
 st.write("---")
 st.subheader("📊 Historical Yield Trend (All Crops & Seasons)")
 
 selected_year_range = st.slider(
     "Select Year Range",
-    min_value=2000,
-    max_value=2015,
-    value=(2000, 2015)
+    min_value=int(df_original["Crop_Year"].min()),
+    max_value=int(df_original["Crop_Year"].max()),
+    value=(int(df_original["Crop_Year"].min()), int(df_original["Crop_Year"].max()))
 )
 
 filtered_df = df_original[
@@ -192,16 +201,15 @@ if not yearly_trend.empty:
         x="Crop_Year",
         y="Yield",
         markers=True,
-        title="Average Yield Across India (2000–2015)",
+        title="Average Yield Across India",
         template="plotly_dark"
     )
     st.plotly_chart(fig_trend, use_container_width=True)
 else:
     st.warning("No data available for selected range.")
 
-
 # ----------------------------
 # FOOTER
 # ----------------------------
 st.write("---")
-st.caption("Advanced Crop Yield Prediction System | Overall & Crop-Specific Insights") 
+st.caption("Advanced Crop Yield Prediction System | Overall & Crop-Specific Insights")
