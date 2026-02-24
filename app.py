@@ -96,7 +96,11 @@ df_encoded = pd.get_dummies(
 )
 
 # Prepare features and target
-X = df_encoded.drop(["Yield", "Production"], axis=1)
+X = df_encoded.drop(
+    ["Yield", "Production", "District_Name"],
+    axis=1,
+    errors="ignore"
+)
 y = df_encoded["Yield"]
 
 # Train model
