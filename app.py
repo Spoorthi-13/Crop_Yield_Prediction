@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from sklearn.ensemble import RandomForestRegressor
+import pickle
 
 # ----------------------------
 # PAGE CONFIG
@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # ----------------------------
-# DARK MODE STYLING (Fixed sidebar, dropdown arrow, button)
+# DARK MODE STYLING
 # ----------------------------
 st.markdown("""
 <style>
@@ -67,13 +67,6 @@ div[role="listbox"] {
 
 [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button:hover {
     background-color: #09728f !important;
-    color: #ffffff !important;
-}
-
-[data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button:disabled {
-    background-color: #0b84a5 !important;
-    color: #ffffff !important;
-    opacity: 0.8 !important;
 }
 
 .plotly-graph-div {
@@ -83,32 +76,15 @@ div[role="listbox"] {
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# LOAD DATA & TRAIN MODEL (Replaces pickle loading)
+# LOAD TRAINED MODEL (IMPORTANT PART)
 # ----------------------------
+with open("crop_model.pkl", "rb") as f:
+    model, model_columns = pickle.load(f)
+
+# Load dataset ONLY for charts and insights
 df_original = pd.read_csv("data/crop_data.csv")
 df_original = df_original.dropna()
 df_original["Yield"] = df_original["Production"] / df_original["Area"]
-
-# One-hot encode categorical features
-df_encoded = pd.get_dummies(
-    df_original,
-    columns=["Crop", "Season", "State_Name"]
-)
-
-# Prepare features and target
-X = df_encoded.drop(
-    ["Yield", "Production", "District_Name"],
-    axis=1,
-    errors="ignore"
-)
-y = df_encoded["Yield"]
-
-# Train model
-model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X, y)
-
-# Save model columns
-model_columns = X.columns.tolist()
 
 # ----------------------------
 # TITLE
@@ -124,9 +100,15 @@ st.sidebar.header("📥 Enter Crop Details")
 
 with st.sidebar.form("prediction_form"):
 
-    crop_options = sorted([col.replace("Crop_", "") for col in model_columns if col.startswith("Crop_")])
-    season_options = sorted([col.replace("Season_", "") for col in model_columns if col.startswith("Season_")])
-    state_options = sorted([col.replace("State_Name_", "") for col in model_columns if col.startswith("State_Name_")])
+    crop_options = sorted(
+        [col.replace("Crop_", "") for col in model_columns if col.startswith("Crop_")]
+    )
+    season_options = sorted(
+        [col.replace("Season_", "") for col in model_columns if col.startswith("Season_")]
+    )
+    state_options = sorted(
+        [col.replace("State_Name_", "") for col in model_columns if col.startswith("State_Name_")]
+    )
 
     selected_crop = st.selectbox("Select Crop", crop_options)
     selected_season = st.selectbox("Select Season", season_options)
@@ -142,7 +124,6 @@ if predict_button:
 
     input_data = pd.DataFrame(columns=model_columns)
     input_data.loc[0] = 0
-
     input_data["Area"] = area
 
     crop_col = f"Crop_{selected_crop}"
@@ -180,7 +161,7 @@ if predict_button:
             st.error("Low Yield Expected ⚠")
 
 # ============================
-# OVERALL HISTORICAL TREND
+# HISTORICAL TREND
 # ============================
 st.write("---")
 st.subheader("📊 Historical Yield Trend (All Crops & Seasons)")
@@ -189,7 +170,10 @@ selected_year_range = st.slider(
     "Select Year Range",
     min_value=int(df_original["Crop_Year"].min()),
     max_value=int(df_original["Crop_Year"].max()),
-    value=(int(df_original["Crop_Year"].min()), int(df_original["Crop_Year"].max()))
+    value=(
+        int(df_original["Crop_Year"].min()),
+        int(df_original["Crop_Year"].max())
+    )
 )
 
 filtered_df = df_original[
